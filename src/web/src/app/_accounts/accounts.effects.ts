@@ -1,5 +1,5 @@
 import {Actions, Effect} from "@ngrx/effects";
-import {EMPTY, Subject, from, fromEvent, merge, of, timer} from "rxjs";
+import {EMPTY, Subject, concat, from, fromEvent, merge, of, timer} from "rxjs";
 import {Injectable} from "@angular/core";
 import {Store, select} from "@ngrx/store";
 import {
@@ -126,6 +126,23 @@ export class AccountsEffects {
             logger.info("setup");
 
             return merge(
+                this.actions$.pipe(
+                    unionizeActionFilter(ACCOUNTS_ACTIONS.is.SelectMailOnline),
+                    map(logActionTypeAndBoundLoggerWithActionType({_logger})),
+                    mergeMap(({payload: p}) => concat(
+                        of(ACCOUNTS_ACTIONS.PatchProgress({login, patch: {selectingMailOnline: true}})),
+                        this.api.webViewClient(webView, type, {finishPromise}).pipe(
+                            mergeMap((client) => client("selectMailOnline", {timeoutMs: ONE_SECOND_MS * 5})(p).pipe(
+                                mergeMap(() => EMPTY),
+                                catchError((error) => of(CORE_ACTIONS.Fail(error))),
+                                finalize(() => this.store.dispatch(ACCOUNTS_ACTIONS.PatchProgress({
+                                    login,
+                                    patch: {selectingMailOnline: false},
+                                }))),
+                            )),
+                        ),
+                    )),
+                ),
                 of(ACCOUNTS_ACTIONS.Patch({login, patch: {syncingActivated: true}})),
                 this.store.pipe(
                     select(OptionsSelectors.FEATURED.mainProcessNotification),
